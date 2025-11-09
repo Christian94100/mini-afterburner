@@ -6,8 +6,6 @@ mini-afterburner en code C
 
 Jeu simple en C inspiré d'Afterburner (1991) utilisant SDL2.
 
-## Compilation et lancement
-
 # Mini Afterburner en C avec SDL2
 
 Ce projet est un jeu simple inspiré d'Afterburner (1991), développé en C avec la bibliothèque SDL2. Il sert de base pour apprendre la programmation de jeux 2D.
@@ -58,4 +56,6 @@ text
 - Mise en place de niveaux et challenges
 
 ## Licence
+
+Projet libre, à adapter selon ta préférence.  
 
