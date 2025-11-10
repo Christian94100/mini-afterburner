@@ -2,7 +2,7 @@
 
 A retro-style shoot'em up inspired by SEGA's After Burner, implemented in C using SDL2.
 
-![Game Screenshot](docs/screenshot.png)
+[After Burner Arcade Screenshot](https://www.gamesdatabase.org/game/arcade/after-burner/screenshot1.jpg)  
 
 ## ✨ Features
 
