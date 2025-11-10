@@ -1,3 +1,5 @@
+c
+
 #include "game.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,22 +48,22 @@ bool game_init(Game* game) {
                                       SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!game->renderer) goto cleanup_window;
 
-    SDL_Surface* tmpSurf = SDL_LoadBMP("player.bmp");
+    SDL_Surface* tmpSurf = SDL_LoadBMP("assets/player.bmp");
     if (!tmpSurf) goto cleanup_renderer;
     game->playerTexture = SDL_CreateTextureFromSurface(game->renderer, tmpSurf);
     SDL_FreeSurface(tmpSurf);
     if (!game->playerTexture) goto cleanup_renderer;
 
-    tmpSurf = SDL_LoadBMP("enemy.bmp");
+    tmpSurf = SDL_LoadBMP("assets/enemy.bmp");
     if (!tmpSurf) goto cleanup_player;
     game->enemyTexture = SDL_CreateTextureFromSurface(game->renderer, tmpSurf);
     SDL_FreeSurface(tmpSurf);
     if (!game->enemyTexture) goto cleanup_enemy;
 
-    game->font = TTF_OpenFont("arial.ttf", 24);
-    game->music = Mix_LoadMUS("synthwave_loop.ogg");
-    game->shotSound = Mix_LoadWAV("laser_shot.wav");
-    game->explosionSound = Mix_LoadWAV("explosion.wav");
+    game->font = TTF_OpenFont("assets/arial.ttf", 24);
+    game->music = Mix_LoadMUS("assets/synthwave_loop.ogg");
+    game->shotSound = Mix_LoadWAV("assets/laser_shot.wav");
+    game->explosionSound = Mix_LoadWAV("assets/explosion.wav");
 
     if (!game->font || !game->music || !game->shotSound || !game->explosionSound)
         goto cleanup_assets;
@@ -123,7 +125,7 @@ void game_handle_event(Game* game, SDL_Event* event) {
                 if (event->key.keysym.sym == SDLK_LEFT)
                     game->effectsVolume = (game->effectsVolume - 8 < 0) ? 0 : game->effectsVolume - 8;
                 if (event->key.keysym.sym == SDLK_RIGHT)
-                    game->effectsVolume = (game->effectsVolume + 8 > MIX_MAX_VOLUME) ? 
+                    game->effectsVolume = (effectsVolume + 8 > MIX_MAX_VOLUME) ? 
                                          MIX_MAX_VOLUME : game->effectsVolume + 8;
                 Mix_VolumeMusic(game->musicVolume);
                 Mix_VolumeChunk(game->shotSound, game->effectsVolume);
@@ -132,8 +134,6 @@ void game_handle_event(Game* game, SDL_Event* event) {
                 break;
             case PLAYING:
                 if (event->key.keysym.sym == SDLK_ESCAPE) game->state = MENU;
-                break;
-            case QUIT:
                 break;
         }
     }
@@ -259,7 +259,7 @@ void game_render(Game* game) {
     SDL_RenderClear(game->renderer);
 
     SDL_Rect bg1 = {game->backgroundX, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
-    SDL_Rect bg2 = {game->background, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
+    SDL_Rect bg2 = {game->backgroundX + WINDOW_WIDTH, 0, WINDOW_WIDTH, WINDOW_HEIGHT}; // FIXED
     SDL_SetRenderDrawColor(game->renderer, 20, 20, 80, 255);
     SDL_RenderFillRect(game->renderer, &bg1);
     SDL_RenderFillRect(game->renderer, &bg2);
@@ -329,8 +329,7 @@ void game_cleanup(Game* game) {
     SDL_Quit();
 }
 
-
-
+main.cc
 
 #include "game.h"
 
@@ -362,9 +361,4 @@ int main(int argc, char *argv[]) {
 }
 
 
-
-COMPILATION (Ubuntu)bash
-
-gcc -o afterburner main.c game.c -lSDL2 -lSDL2_ttf -lSDL2_mixer -lm
-./afterburner
 
