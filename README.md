@@ -6,6 +6,21 @@ mini-afterburner en code C
 
 Jeu simple en C inspiré d'Afterburner (1991) utilisant SDL2.
 
+# Mini Afterburner Neo Geo Style
+
+Un shoot'em up rétro en C avec SDL2 – **vibe 1991, full afterburner** !
+
+## Fonctionnalités
+- Tir, ennemis animés, collisions
+- Menu, Options (volume), Highscore persistant
+- Particules d'explosion
+- Musique synthwave + effets sonores
+- Scrolling parallax
+
+## Compilation (Linux/macOS)
+```bash
+gcc afterburner.c -o afterburner -lSDL2 -lSDL2_ttf -lSDL2_mixer -lm
+
 # Mini Afterburner en C avec SDL2
 
 Ce projet est un jeu simple inspiré d'Afterburner (1991), développé en C avec la bibliothèque SDL2. Il sert de base pour apprendre la programmation de jeux 2D.
