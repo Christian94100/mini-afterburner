@@ -2,7 +2,7 @@
 
 A retro-style shoot'em up inspired by SEGA's After Burner, implemented in C using SDL2.
 
-[[After Burner Arcade Screenshot](https://www.gamesdatabase.org/game/arcade/after-burner/screenshot1.jpg) ](https://www.mobygames.com/game/22833/after-burner-iii/screenshots/sega-cd/169744/) 
+ http://www.hardcoregaming101.net/after-burner-iii/ (https://www.gamesdatabase.org/game/arcade/after-burner/screenshot1.jpg) ](https://www.mobygames.com/game/22833/after-burner-iii/screenshots/sega-cd/169744/) 
 
 ## ✨ Features
 
