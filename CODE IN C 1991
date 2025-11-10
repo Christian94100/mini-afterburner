@@ -1,9 +1,53 @@
-c
-
-#include "game.h"
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
+#include <SDL2/SDL_mixer.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <stdbool.h>
+
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 600
+#define PLAYER_SPEED 5
+#define BULLET_SPEED 10
+#define MAX_BULLETS 10
+#define MAX_ENEMIES 5
+#define ENEMY_SPEED 3
+#define SPRITE_WIDTH 50
+#define SPRITE_HEIGHT 30
+#define NUM_FRAMES 4
+#define MAX_PARTICLES 20
+
+typedef enum { MENU, OPTIONS, PLAYING, QUIT } GameState;
+
+typedef struct { int x, y; bool active; } Bullet;
+typedef struct { int x, y; bool active; SDL_Rect rect; int currentFrame; } Enemy;
+typedef struct { int x, y, dx, dy; Uint8 life; } Particle;
+
+typedef struct {
+    SDL_Window* window;
+    SDL_Renderer* renderer;
+    SDL_Texture* playerTexture;
+    SDL_Texture* enemyTexture;
+    TTF_Font* font;
+    Mix_Music* music;
+    Mix_Chunk* shotSound;
+    Mix_Chunk* explosionSound;
+
+    GameState state;
+    SDL_Rect player;
+    Bullet bullets[MAX_BULLETS];
+    Enemy enemies[MAX_ENEMIES];
+    Particle particles[MAX_PARTICLES];
+
+    int score;
+    int highscore;
+    int musicVolume;
+    int effectsVolume;
+
+    int backgroundX;
+    Uint32 lastEnemyAnim;
+} Game;
 
 static void init_enemies(Enemy enemies[]) {
     for (int i = 0; i < MAX_ENEMIES; i++) {
@@ -87,7 +131,6 @@ bool game_init(Game* game) {
 
     init_enemies(game->enemies);
     Mix_PlayMusic(game->music, -1);
-
     return true;
 
 cleanup_assets:
@@ -125,7 +168,7 @@ void game_handle_event(Game* game, SDL_Event* event) {
                 if (event->key.keysym.sym == SDLK_LEFT)
                     game->effectsVolume = (game->effectsVolume - 8 < 0) ? 0 : game->effectsVolume - 8;
                 if (event->key.keysym.sym == SDLK_RIGHT)
-                    game->effectsVolume = (effectsVolume + 8 > MIX_MAX_VOLUME) ? 
+                    game->effectsVolume = (game->effectsVolume + 8 > MIX_MAX_VOLUME) ? 
                                          MIX_MAX_VOLUME : game->effectsVolume + 8;
                 Mix_VolumeMusic(game->musicVolume);
                 Mix_VolumeChunk(game->shotSound, game->effectsVolume);
@@ -134,6 +177,8 @@ void game_handle_event(Game* game, SDL_Event* event) {
                 break;
             case PLAYING:
                 if (event->key.keysym.sym == SDLK_ESCAPE) game->state = MENU;
+                break;
+            default:
                 break;
         }
     }
@@ -259,7 +304,7 @@ void game_render(Game* game) {
     SDL_RenderClear(game->renderer);
 
     SDL_Rect bg1 = {game->backgroundX, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
-    SDL_Rect bg2 = {game->backgroundX + WINDOW_WIDTH, 0, WINDOW_WIDTH, WINDOW_HEIGHT}; // FIXED
+    SDL_Rect bg2 = {game->backgroundX + WINDOW_WIDTH, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
     SDL_SetRenderDrawColor(game->renderer, 20, 20, 80, 255);
     SDL_RenderFillRect(game->renderer, &bg1);
     SDL_RenderFillRect(game->renderer, &bg2);
@@ -329,16 +374,12 @@ void game_cleanup(Game* game) {
     SDL_Quit();
 }
 
-main.cc
-
-#include "game.h"
-
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
     Game game = {0};
     if (!game_init(&game)) {
-        SDL_Log("Game initialization failed: %s", SDL_GetError());
+        SDL_Log("Game initialization failed");
         return 1;
     }
 
@@ -359,6 +400,7 @@ int main(int argc, char *argv[]) {
     game_cleanup(&game);
     return 0;
 }
+
 
 
 
