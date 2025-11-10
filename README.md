@@ -1,76 +1,93 @@
-# mini-afterburner
-mini-afterburner en code C 
+# 🚀 Mini Afterburner
 
+A retro-style shoot'em up inspired by SEGA's After Burner, implemented in C using SDL2.
 
-# Mini Afterburner en C avec SDL2
+![Game Screenshot](docs/screenshot.png)
 
-Jeu simple en C inspiré d'Afterburner (1991) utilisant SDL2.
+## ✨ Features
 
-# Mini Afterburner Neo Geo Style
+- Fast-paced arcade shooting action
+- Smooth sprite animations
+- Particle effects system
+- Dynamic background scrolling
+- Persistent high scores
+- Configurable audio settings
+- Neo Geo style graphics
 
-Un shoot'em up rétro en C avec SDL2 – **vibe 1991, full afterburner** !
+## 🎮 Controls
 
-## Fonctionnalités
-- Tir, ennemis animés, collisions
-- Menu, Options (volume), Highscore persistant
-- Particules d'explosion
-- Musique synthwave + effets sonores
-- Scrolling parallax
+- **Arrow Keys**: Move your aircraft
+- **Space**: Fire weapons
+- **Enter**: Start game
+- **O**: Options menu
+- **Esc**: Return/Quit
 
-## Compilation (Linux/macOS)
+## 🛠️ Building from Source
+
+### Prerequisites
+
 ```bash
-gcc afterburner.c -o afterburner -lSDL2 -lSDL2_ttf -lSDL2_mixer -lm
+# Install required development libraries
+sudo apt-get update
+sudo apt-get install -y gcc make libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev
+```
 
-# Mini Afterburner en C avec SDL2
+### Compilation
 
-Ce projet est un jeu simple inspiré d'Afterburner (1991), développé en C avec la bibliothèque SDL2. Il sert de base pour apprendre la programmation de jeux 2D.
+```bash
+make
+```
 
-## Fonctionnalités
+Or manually:
 
-- Fenêtre graphique avec SDL2
-- Mouvement fluide de l’avion contrôlé par les flèches du clavier
-- Tir de projectiles avec la barre espace
-- Scrolling horizontal basique du fond
-- Limites de déplacement pour le joueur
+```bash
+gcc -o afterburner main.c game.c -lSDL2 -lSDL2_ttf -lSDL2_mixer -lm
+```
 
-## Prérequis
+## 📁 Project Structure
 
-- SDL2 doit être installée sur ton système.
+```
+.
+├── src/
+│   ├── game.h        # Game declarations
+│   ├── game.c        # Game implementation
+│   └── main.c        # Entry point
+├── assets/
+│   ├── player.bmp    # Player sprite sheet
+│   ├── enemy.bmp     # Enemy sprite sheet
+│   ├── arial.ttf     # Font file
+│   ├── synthwave.ogg # Background music
+│   ├── laser.wav     # Shot sound effect
+│   └── explode.wav   # Explosion sound
+└── Makefile          # Build configuration
+```
 
-### Installation de SDL2
+## 🎯 Design Patterns
 
-- Sur Debian/Ubuntu :  
-sudo apt install libsdl2-dev
+- **State Pattern**: Game state management (Menu, Playing, Options)
+- **Game Loop Pattern**: Fixed time step update/render cycle
+- **Component Pattern**: Entity management (player, enemies, particles)
+- **Resource Manager**: Asset loading and cleanup
+- **Observer Pattern**: Collision and event handling
 
-text
-- Sur Windows : télécharge et installe SDL2 depuis le site officiel https://www.libsdl.org/download-2.0.php
+## 🌐 WebAssembly Port
 
-## Compilation
+The game can be compiled to WebAssembly using Emscripten:
 
-Compile le projet avec gcc en liant SDL2 :
+```bash
+emcc -o web/game.js src/*.c -s USE_SDL=2 -s USE_SDL_TTF=2 -s USE_SDL_MIXER=2
+```
 
-gcc afterburner.c -o afterburner -lSDL2
+See [WebAssembly Guide](docs/wasm.md) for details.
 
-text
+## 🤝 Contributing
 
-## Lancement
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-Execute le programme :
+## 📝 License
 
-./afterburner
-
-text
-
-## Améliorations possibles
-
-- Ajouter des ennemis avec mouvements et destructions  
-- Gestion des collisions et vie du joueur  
-- Ajout de sons et musiques  
-- Intégration de vraies images (sprites) pour le décor et le joueur  
-- Score et interface utilisateur  
-- Mise en place de niveaux et challenges
-
-## Licence
-
-Projet libre, à adapter selon ta préférence.  
-
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
