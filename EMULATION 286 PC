@@ -1,0 +1,10 @@
+mini_afterburner/
+├── mini_afterburner.py
+├── README.md
+├── assets/
+│   └── f14.png  (optionnel)
+└── requirements.txt
+
+
+
+pygame==1.9.6
