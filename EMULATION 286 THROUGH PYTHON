@@ -136,3 +136,20 @@ while running:
 
 pygame.quit()
 print(f"Score final: {score//10} - Bien joué, pilote !")
+
+
+
+
+
+
+
+COMMENT LE FAIRE TOURNER SUR TON VIEUX DELL / 286 ?Matériel
+Solution
+Dell Windows 95/98
+Installe Python 2.7 + Pygame 1.9 → ça tourne à 20-30 FPS en 320x200
+286 MS-DOS
+Utilise DOSBox sur un PC moderne → lance le script avec pydos ou Python pour DOS (ex: Python-DOS)
+Commodore ?
+Pas de Python natif → mais tu peux émuler un 286 avec PCem ou 86Box et lancer le jeu !
+
+
