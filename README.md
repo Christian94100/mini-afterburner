@@ -46,21 +46,31 @@ gcc -o afterburner main.c game.c -lSDL2 -lSDL2_ttf -lSDL2_mixer -lm
 
 ## 📁 Project Structure
 
-```
-.
-├── src/
-│   ├── game.h        # Game declarations
-│   ├── game.c        # Game implementation
-│   └── main.c        # Entry point
-├── assets/
-│   ├── player.bmp    # Player sprite sheet
-│   ├── enemy.bmp     # Enemy sprite sheet
-│   ├── arial.ttf     # Font file
-│   ├── synthwave.ogg # Background music
-│   ├── laser.wav     # Shot sound effect
-│   └── explode.wav   # Explosion sound
-└── Makefile          # Build configuration
-```
+# Makefile pour mini-afterburner  (SDL2 + SDL2_image + SDL2_ttf + SDL2_mixer)
+
+CC      := gcc
+CFLAGS  := -std=c99 -Wall -Wextra -O2 `sdl2-config --cflags`
+LDFLAGS := `sdl2-config --libs` -lSDL2_ttf -lSDL2_mixer -lm
+TARGET  := mini-ab
+SRC     := main.c
+
+.PHONY: all clean run
+
+all: $(TARGET)
+
+$(TARGET): $(SRC)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+run: $(TARGET)
+	./$(TARGET)
+
+clean:
+	rm -f $(TARGET)
+
+# petite règle bonus : lance avec gdb
+debug: CFLAGS += -g -DDEBUG
+debug: clean $(TARGET)
+	gdb ./$(TARGET)
 
 ## 🎯 Design Patterns
 
