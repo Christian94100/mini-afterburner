@@ -1,261 +1,245 @@
+/*
+ * Mini Afterburner – cleaned version
+ * Build: make
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <math.h>
+#include <time.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_mixer.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <stdbool.h>
 
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
-#define PLAYER_SPEED 5
-#define BULLET_SPEED 10
-#define MAX_BULLETS 10
-#define MAX_ENEMIES 5
-#define ENEMY_SPEED 3
-#define SPRITE_WIDTH 50
-#define SPRITE_HEIGHT 30
-#define NUM_FRAMES 4
-#define MAX_PARTICLES 20
+/* ---------- config ---------- */
+#define WINDOW_WIDTH   800
+#define WINDOW_HEIGHT  600
+#define PLAYER_SPEED   350.0f   /* px/s */
+#define BULLET_SPEED   600.0f
+#define FIRE_COOLDOWN  0.18f    /* s */
+#define MAX_BULLETS    10
+#define MAX_ENEMIES    5
+#define ENEMY_SPEED    180.0f
+#define SPRITE_WIDTH   50
+#define SPRITE_HEIGHT  30
+#define NUM_FRAMES     4
+#define MAX_PARTICLES  20
+#define ASSET_PATH     "assets/"
 
 typedef enum { MENU, OPTIONS, PLAYING, QUIT } GameState;
 
-typedef struct { int x, y; bool active; } Bullet;
-typedef struct { int x, y; bool active; SDL_Rect rect; int currentFrame; } Enemy;
-typedef struct { int x, y, dx, dy; Uint8 life; } Particle;
+/* ---------- structs ---------- */
+typedef struct { float x, y; bool active; } Bullet;
+typedef struct { float x, y; bool active; SDL_Rect rect; int frame; } Enemy;
+typedef struct { float x, y, dx, dy; uint8_t life; } Particle;
 
 typedef struct {
-    SDL_Window* window;
-    SDL_Renderer* renderer;
-    SDL_Texture* playerTexture;
-    SDL_Texture* enemyTexture;
-    TTF_Font* font;
-    Mix_Music* music;
-    Mix_Chunk* shotSound;
-    Mix_Chunk* explosionSound;
-
-    GameState state;
-    SDL_Rect player;
-    Bullet bullets[MAX_BULLETS];
-    Enemy enemies[MAX_ENEMIES];
-    Particle particles[MAX_PARTICLES];
-
-    int score;
-    int highscore;
-    int musicVolume;
-    int effectsVolume;
-
-    int backgroundX;
-    Uint32 lastEnemyAnim;
+    SDL_Window   *win;
+    SDL_Renderer *ren;
+    SDL_Texture  *texPlayer, *texEnemy;
+    TTF_Font     *font;
+    Mix_Music    *music;
+    Mix_Chunk    *sndShot, *sndExplode;
+    GameState     state;
+    SDL_Rect      player;
+    Bullet        bullets[MAX_BULLETS];
+    Enemy         enemies[MAX_ENEMIES];
+    Particle      particles[MAX_PARTICLES];
+    int           score, highscore;
+    int           volMusic, volFX;
+    float         backgroundX;
+    uint32_t      lastEnemyFrame;
+    /* timers */
+    float         fireTimer;
+    uint32_t      lastTicks;
 } Game;
 
-static void init_enemies(Enemy enemies[]) {
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        enemies[i].x = WINDOW_WIDTH + i * 200 + rand() % 100;
-        enemies[i].y = rand() % (WINDOW_HEIGHT - SPRITE_HEIGHT);
-        enemies[i].active = true;
-        enemies[i].rect = (SDL_Rect){enemies[i].x, enemies[i].y, SPRITE_WIDTH, SPRITE_HEIGHT};
-        enemies[i].currentFrame = 0;
-    }
+/* ---------- util ---------- */
+static bool asset_exists(const char *file)
+{
+    SDL_RWops *rw = SDL_RWFromFile(file, "r");
+    if (rw) SDL_RWclose(rw);
+    return rw != NULL;
 }
 
-static bool check_collision(SDL_Rect a, SDL_Rect b) {
-    return SDL_HasIntersection(&a, &b);
+static bool load_texture(SDL_Renderer *ren, const char *file, SDL_Texture **out)
+{
+    char path[256];
+    snprintf(path, sizeof(path), "%s%s", ASSET_PATH, file);
+    if (!asset_exists(path)) { SDL_Log("Missing %s", path); return false; }
+    SDL_Surface *surf = SDL_LoadBMP(path);
+    if (!surf) return false;
+    *out = SDL_CreateTextureFromSurface(ren, surf);
+    SDL_FreeSurface(surf);
+    return *out != NULL;
 }
 
-static bool render_text(SDL_Renderer* renderer, TTF_Font* font, const char* text, int x, int y) {
-    if (!renderer || !font || !text) return false;
-    SDL_Color white = {255, 255, 255, 255};
-    SDL_Surface* surface = TTF_RenderText_Solid(font, text, white);
-    if (!surface) return false;
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-    if (!texture) { SDL_FreeSurface(surface); return false; }
-    SDL_Rect dst = {x, y, surface->w, surface->h};
-    SDL_RenderCopy(renderer, texture, NULL, &dst);
-    SDL_DestroyTexture(texture);
-    SDL_FreeSurface(surface);
-    return true;
-}
-
-bool game_init(Game* game) {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) return false;
-    if (TTF_Init() == -1) { SDL_Quit(); return false; }
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-        TTF_Quit(); SDL_Quit(); return false;
-    }
-
-    game->window = SDL_CreateWindow("Mini Afterburner", SDL_WINDOWPOS_CENTERED,
-                                  SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
-    if (!game->window) goto cleanup_sdl;
-
-    game->renderer = SDL_CreateRenderer(game->window, -1, 
-                                      SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (!game->renderer) goto cleanup_window;
-
-    SDL_Surface* tmpSurf = SDL_LoadBMP("assets/player.bmp");
-    if (!tmpSurf) goto cleanup_renderer;
-    game->playerTexture = SDL_CreateTextureFromSurface(game->renderer, tmpSurf);
-    SDL_FreeSurface(tmpSurf);
-    if (!game->playerTexture) goto cleanup_renderer;
-
-    tmpSurf = SDL_LoadBMP("assets/enemy.bmp");
-    if (!tmpSurf) goto cleanup_player;
-    game->enemyTexture = SDL_CreateTextureFromSurface(game->renderer, tmpSurf);
-    SDL_FreeSurface(tmpSurf);
-    if (!game->enemyTexture) goto cleanup_enemy;
-
-    game->font = TTF_OpenFont("assets/arial.ttf", 24);
-    game->music = Mix_LoadMUS("assets/synthwave_loop.ogg");
-    game->shotSound = Mix_LoadWAV("assets/laser_shot.wav");
-    game->explosionSound = Mix_LoadWAV("assets/explosion.wav");
-
-    if (!game->font || !game->music || !game->shotSound || !game->explosionSound)
-        goto cleanup_assets;
-
-    srand((unsigned int)time(NULL));
-    game->state = MENU;
-    game->player = (SDL_Rect){100, WINDOW_HEIGHT/2 - SPRITE_HEIGHT/2, SPRITE_WIDTH, SPRITE_HEIGHT};
-    game->score = 0;
-    game->highscore = 0;
-    game->musicVolume = MIX_MAX_VOLUME / 2;
-    game->effectsVolume = MIX_MAX_VOLUME / 2;
-    game->backgroundX = 0;
-    game->lastEnemyAnim = SDL_GetTicks();
-
-    FILE* f = fopen("highscore.txt", "r");
-    if (f) { fscanf(f, "%d", &game->highscore); fclose(f); }
-
-    Mix_VolumeMusic(game->musicVolume);
-    Mix_VolumeChunk(game->shotSound, game->effectsVolume);
-    Mix_VolumeChunk(game->explosionSound, game->effectsVolume);
-
-    init_enemies(game->enemies);
-    Mix_PlayMusic(game->music, -1);
-    return true;
-
-cleanup_assets:
-    if (game->explosionSound) Mix_FreeChunk(game->explosionSound);
-    if (game->shotSound) Mix_FreeChunk(game->shotSound);
-    if (game->music) Mix_FreeMusic(game->music);
-    if (game->font) TTF_CloseFont(game->font);
-cleanup_enemy:
-    if (game->enemyTexture) SDL_DestroyTexture(game->enemyTexture);
-cleanup_player:
-    if (game->playerTexture) SDL_DestroyTexture(game->playerTexture);
-cleanup_renderer:
-    if (game->renderer) SDL_DestroyRenderer(game->renderer);
-cleanup_window:
-    if (game->window) SDL_DestroyWindow(game->window);
-cleanup_sdl:
-    Mix_CloseAudio(); TTF_Quit(); SDL_Quit();
+static bool load_highscore(int *dst)
+{
+    FILE *f = fopen("highscore.txt", "r");
+    if (f) { fscanf(f, "%d", dst); fclose(f); return true; }
     return false;
 }
 
-void game_handle_event(Game* game, SDL_Event* event) {
-    if (event->type == SDL_KEYDOWN) {
-        switch(game->state) {
-            case MENU:
-                if (event->key.keysym.sym == SDLK_RETURN) game->state = PLAYING;
-                else if (event->key.keysym.sym == SDLK_o) game->state = OPTIONS;
-                else if (event->key.keysym.sym == SDLK_ESCAPE) game->state = QUIT;
-                break;
-            case OPTIONS:
-                if (event->key.keysym.sym == SDLK_UP) 
-                    game->musicVolume = (game->musicVolume + 8 > MIX_MAX_VOLUME) ? 
-                                       MIX_MAX_VOLUME : game->musicVolume + 8;
-                if (event->key.keysym.sym == SDLK_DOWN)
-                    game->musicVolume = (game->musicVolume - 8 < 0) ? 0 : game->musicVolume - 8;
-                if (event->key.keysym.sym == SDLK_LEFT)
-                    game->effectsVolume = (game->effectsVolume - 8 < 0) ? 0 : game->effectsVolume - 8;
-                if (event->key.keysym.sym == SDLK_RIGHT)
-                    game->effectsVolume = (game->effectsVolume + 8 > MIX_MAX_VOLUME) ? 
-                                         MIX_MAX_VOLUME : game->effectsVolume + 8;
-                Mix_VolumeMusic(game->musicVolume);
-                Mix_VolumeChunk(game->shotSound, game->effectsVolume);
-                Mix_VolumeChunk(game->explosionSound, game->effectsVolume);
-                if (event->key.keysym.sym == SDLK_ESCAPE) game->state = MENU;
-                break;
-            case PLAYING:
-                if (event->key.keysym.sym == SDLK_ESCAPE) game->state = MENU;
-                break;
-            default:
-                break;
+static void save_highscore(int v)
+{
+    FILE *f = fopen("highscore.txt", "w");
+    if (f) { fprintf(f, "%d", v); fclose(f); }
+}
+
+/* ---------- init ---------- */
+static bool game_init(Game *g)
+{
+    memset(g, 0, sizeof(*g));
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) return false;
+    if (TTF_Init() == -1) goto fail;
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) goto fail;
+
+    g->win = SDL_CreateWindow("Mini Afterburner", SDL_WINDOWPOS_CENTERED,
+                              SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
+    if (!g->win) goto fail;
+    g->ren = SDL_CreateRenderer(g->win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!g->ren) goto fail;
+
+    if (!load_texture(g->ren, "player.bmp", &g->texPlayer)) goto fail;
+    if (!load_texture(g->ren, "enemy.bmp", &g->texEnemy)) goto fail;
+
+    char path[256];
+    snprintf(path, sizeof(path), "%s%s", ASSET_PATH, "arial.ttf");
+    g->font = TTF_OpenFont(path, 24);
+    if (!g->font) goto fail;
+
+    snprintf(path, sizeof(path), "%s%s", ASSET_PATH, "synthwave_loop.ogg");
+    g->music = Mix_LoadMUS(path);
+    snprintf(path, sizeof(path), "%s%s", ASSET_PATH, "laser_shot.wav");
+    g->sndShot = Mix_LoadWAV(path);
+    snprintf(path, sizeof(path), "%s%s", ASSET_PATH, "explosion.wav");
+    g->sndExplode = Mix_LoadWAV(path);
+    if (!g->music || !g->sndShot || !g->sndExplode) goto fail;
+
+    srand((unsigned)time(NULL));
+    g->state = MENU;
+    g->player = (SDL_Rect){100, WINDOW_HEIGHT/2 - SPRITE_HEIGHT/2, SPRITE_WIDTH, SPRITE_HEIGHT};
+    g->volMusic = g->volFX = MIX_MAX_VOLUME / 2;
+    load_highscore(&g->highscore);
+    Mix_VolumeMusic(g->volMusic);
+    Mix_VolumeChunk(g->sndShot, g->volFX);
+    Mix_VolumeChunk(g->sndExplode, g->volFX);
+    Mix_PlayMusic(g->music, -1);
+
+    /* enemies */
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        g->enemies[i].x = WINDOW_WIDTH + i * 200 + rand() % 100;
+        g->enemies[i].y = rand() % (WINDOW_HEIGHT - SPRITE_HEIGHT);
+        g->enemies[i].active = true;
+        g->enemies[i].rect = (SDL_Rect){(int)g->enemies[i].x, (int)g->enemies[i].y, SPRITE_WIDTH, SPRITE_HEIGHT};
+    }
+    g->lastTicks = SDL_GetTicks();
+    return true;
+
+fail:
+    SDL_Log("%s", SDL_GetError());
+    return false;
+}
+
+/* ---------- input ---------- */
+static void handle_event(Game *g, SDL_Event *ev)
+{
+    if (ev->type == SDL_KEYDOWN) {
+        switch (g->state) {
+        case MENU:
+            if (ev->key.keysym.sym == SDLK_RETURN) g->state = PLAYING;
+            else if (ev->key.keysym.sym == SDLK_o) g->state = OPTIONS;
+            else if (ev->key.keysym.sym == SDLK_ESCAPE) g->state = QUIT;
+            break;
+        case OPTIONS:
+            if (ev->key.keysym.sym == SDLK_UP)   { g->volMusic = SDL_min(g->volMusic + 8, MIX_MAX_VOLUME); Mix_VolumeMusic(g->volMusic); }
+            if (ev->key.keysym.sym == SDLK_DOWN) { g->volMusic = SDL_max(g->volMusic - 8, 0);           Mix_VolumeMusic(g->volMusic); }
+            if (ev->key.keysym.sym == SDLK_LEFT)  { g->volFX = SDL_max(g->volFX - 8, 0); Mix_VolumeChunk(g->sndShot, g->volFX); Mix_VolumeChunk(g->sndExplode, g->volFX); }
+            if (ev->key.keysym.sym == SDLK_RIGHT) { g->volFX = SDL_min(g->volFX + 8, MIX_MAX_VOLUME); Mix_VolumeChunk(g->sndShot, g->volFX); Mix_VolumeChunk(g->sndExplode, g->volFX); }
+            if (ev->key.keysym.sym == SDLK_ESCAPE) g->state = MENU;
+            break;
+        case PLAYING:
+            if (ev->key.keysym.sym == SDLK_ESCAPE) g->state = MENU;
+            break;
+        default: break;
         }
     }
 }
 
-void game_update(Game* game) {
-    if (game->state != PLAYING) return;
+/* ---------- update ---------- */
+static void update(Game *g, float dt)
+{
+    if (g->state != PLAYING) return;
 
-    const Uint8* state = SDL_GetKeyboardState(NULL);
-    
-    if (state[SDL_SCANCODE_UP]) game->player.y -= PLAYER_SPEED;
-    if (state[SDL_SCANCODE_DOWN]) game->player.y += PLAYER_SPEED;
-    if (state[SDL_SCANCODE_RIGHT]) game->player.x += PLAYER_SPEED;
-    if (state[SDL_SCANCODE_LEFT]) game->player.x -= PLAYER_SPEED;
+    const Uint8 *kb = SDL_GetKeyboardState(NULL);
+    /* player movement */
+    if (kb[SDL_SCANCODE_UP])    g->player.y -= PLAYER_SPEED * dt;
+    if (kb[SDL_SCANCODE_DOWN])  g->player.y += PLAYER_SPEED * dt;
+    if (kb[SDL_SCANCODE_LEFT])  g->player.x -= PLAYER_SPEED * dt;
+    if (kb[SDL_SCANCODE_RIGHT]) g->player.x += PLAYER_SPEED * dt;
+    g->player.y = SDL_clamp(g->player.y, 0, WINDOW_HEIGHT - g->player.h);
+    g->player.x = SDL_clamp(g->player.x, 0, WINDOW_WIDTH  - g->player.w);
 
-    game->player.y = (game->player.y < 0) ? 0 : 
-                     (game->player.y > WINDOW_HEIGHT - game->player.h) ? 
-                     WINDOW_HEIGHT - game->player.h : game->player.y;
-    game->player.x = (game->player.x < 0) ? 0 : 
-                     (game->player.x > WINDOW_WIDTH - game->player.w) ? 
-                     WINDOW_WIDTH - game->player.w : game->player.x;
-
-    if (state[SDL_SCANCODE_SPACE]) {
-        for (int i = 0; i < MAX_BULLETS; i++) {
-            if (!game->bullets[i].active) {
-                game->bullets[i].x = game->player.x + game->player.w;
-                game->bullets[i].y = game->player.y + game->player.h / 2;
-                game->bullets[i].active = true;
-                Mix_PlayChannel(-1, game->shotSound, 0);
+    /* shooting with cooldown */
+    g->fireTimer -= dt;
+    if (kb[SDL_SCANCODE_SPACE] && g->fireTimer <= 0) {
+        for (int i = 0; i < MAX_BULLETS; ++i) {
+            if (!g->bullets[i].active) {
+                g->bullets[i].x = g->player.x + g->player.w;
+                g->bullets[i].y = g->player.y + g->player.h * 0.5f;
+                g->bullets[i].active = true;
+                Mix_PlayChannel(-1, g->sndShot, 0);
+                g->fireTimer = FIRE_COOLDOWN;
                 break;
             }
         }
     }
-
-    for (int i = 0; i < MAX_BULLETS; i++) {
-        if (game->bullets[i].active) {
-            game->bullets[i].x += BULLET_SPEED;
-            if (game->bullets[i].x > WINDOW_WIDTH) game->bullets[i].active = false;
+    /* bullets */
+    for (int i = 0; i < MAX_BULLETS; ++i) {
+        if (g->bullets[i].active) {
+            g->bullets[i].x += BULLET_SPEED * dt;
+            if (g->bullets[i].x > WINDOW_WIDTH) g->bullets[i].active = false;
         }
     }
-
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        if (game->enemies[i].active) {
-            game->enemies[i].x -= ENEMY_SPEED;
-            if (game->enemies[i].x < -SPRITE_WIDTH) {
-                game->enemies[i].x = WINDOW_WIDTH + rand() % 200;
-                game->enemies[i].y = rand() % (WINDOW_HEIGHT - SPRITE_HEIGHT);
-            }
-            game->enemies[i].rect.x = game->enemies[i].x;
-            game->enemies[i].rect.y = game->enemies[i].y;
+    /* enemies */
+    uint32_t now = SDL_GetTicks();
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        Enemy *e = &g->enemies[i];
+        if (!e->active) continue;
+        e->x -= ENEMY_SPEED * dt;
+        if (e->x < -SPRITE_WIDTH) {
+            e->x = WINDOW_WIDTH + rand() % 300;
+            e->y = rand() % (WINDOW_HEIGHT - SPRITE_HEIGHT);
+        }
+        e->rect.x = (int)e->x; e->rect.y = (int)e->y;
+        /* animation */
+        if (now - g->lastEnemyFrame > 150) {
+            e->frame = (e->frame + 1) % NUM_FRAMES;
         }
     }
+    if (now - g->lastEnemyFrame > 150) g->lastEnemyFrame = now;
 
-    Uint32 currentTicks = SDL_GetTicks();
-    if (currentTicks - game->lastEnemyAnim > 150) {
-        game->lastEnemyAnim = currentTicks;
-        for (int i = 0; i < MAX_ENEMIES; i++)
-            if (game->enemies[i].active)
-                game->enemies[i].currentFrame = (game->enemies[i].currentFrame + 1) % NUM_FRAMES;
-    }
-
-    for (int i = 0; i < MAX_BULLETS; i++) {
-        if (!game->bullets[i].active) continue;
-        SDL_Rect bulletRect = {game->bullets[i].x, game->bullets[i].y, 10, 4};
-        for (int j = 0; j < MAX_ENEMIES; j++) {
-            if (game->enemies[j].active && check_collision(bulletRect, game->enemies[j].rect)) {
-                game->enemies[j].active = false;
-                game->bullets[i].active = false;
-                game->score++;
-                Mix_PlayChannel(-1, game->explosionSound, 0);
-                for (int p = 0; p < MAX_PARTICLES; p++) {
-                    if (game->particles[p].life == 0) {
-                        game->particles[p].x = game->enemies[j].rect.x + 25;
-                        game->particles[p].y = game->enemies[j].rect.y + 15;
-                        game->particles[p].dx = (rand() % 11) - 5;
-                        game->particles[p].dy = (rand() % 11) - 5;
-                        game->particles[p].life = 30;
+    /* collisions */
+    for (int i = 0; i < MAX_BULLETS; ++i) {
+        if (!g->bullets[i].active) continue;
+        SDL_Rect b = {(int)g->bullets[i].x, (int)g->bullets[i].y, 10, 4};
+        for (int j = 0; j < MAX_ENEMIES; ++j) {
+            Enemy *e = &g->enemies[j];
+            if (e->active && SDL_HasIntersection(&b, &e->rect)) {
+                e->active = false;
+                g->bullets[i].active = false;
+                g->score++;
+                Mix_PlayChannel(-1, g->sndExplode, 0);
+                /* spawn particles */
+                for (int p = 0; p < MAX_PARTICLES; ++p) {
+                    if (g->particles[p].life == 0) {
+                        g->particles[p].x = e->rect.x + e->rect.w/2;
+                        g->particles[p].y = e->rect.y + e->rect.h/2;
+                        g->particles[p].dx = (float)(rand()%11-5);
+                        g->particles[p].dy = (float)(rand()%11-5);
+                        g->particles[p].life = 30;
                         break;
                     }
                 }
@@ -263,141 +247,142 @@ void game_update(Game* game) {
             }
         }
     }
-
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        if (!game->enemies[i].active) {
-            game->enemies[i].x = WINDOW_WIDTH + rand() % 300;
-            game->enemies[i].y = rand() % (WINDOW_HEIGHT - SPRITE_HEIGHT);
-            game->enemies[i].active = true;
-            game->enemies[i].rect.x = game->enemies[i].x;
-            game->enemies[i].rect.y = game->enemies[i].y;
+    /* respawn enemy */
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        Enemy *e = &g->enemies[i];
+        if (!e->active) {
+            e->x = WINDOW_WIDTH + rand() % 300;
+            e->y = rand() % (WINDOW_HEIGHT - SPRITE_HEIGHT);
+            e->active = true;
+            e->rect.x = (int)e->x; e->rect.y = (int)e->y;
         }
     }
-
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        if (game->enemies[i].active && check_collision(game->player, game->enemies[i].rect)) {
-            game->state = MENU;
-            if (game->score > game->highscore) {
-                game->highscore = game->score;
-                FILE* f = fopen("highscore.txt", "w");
-                if (f) { fprintf(f, "%d", game->highscore); fclose(f); }
-            }
-            game->score = 0;
-            Mix_PlayChannel(-1, game->explosionSound, 0);
+    /* player collision */
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        if (g->enemies[i].active && SDL_HasIntersection(&g->player, &g->enemies[i].rect)) {
+            g->state = MENU;
+            if (g->score > g->highscore) { g->highscore = g->score; save_highscore(g->highscore); }
+            g->score = 0;
+            Mix_PlayChannel(-1, g->sndExplode, 0);
             break;
         }
     }
-
-    for (int p = 0; p < MAX_PARTICLES; p++) {
-        if (game->particles[p].life > 0) {
-            game->particles[p].x += game->particles[p].dx;
-            game->particles[p].y += game->particles[p].dy;
-            game->particles[p].life--;
+    /* particles */
+    for (int i = 0; i < MAX_PARTICLES; ++i) {
+        Particle *p = &g->particles[i];
+        if (p->life) {
+            p->x += p->dx; p->y += p->dy; p->life--;
         }
     }
-
-    game->backgroundX = (game->backgroundX - 2 <= -WINDOW_WIDTH) ? 0 : game->backgroundX - 2;
+    /* scrolling background */
+    g->backgroundX -= 120.0f * dt;
+    if (g->backgroundX <= -WINDOW_WIDTH) g->backgroundX += WINDOW_WIDTH;
 }
 
-void game_render(Game* game) {
-    SDL_SetRenderDrawColor(game->renderer, 0, 0, 50, 255);
-    SDL_RenderClear(game->renderer);
+/* ---------- render ---------- */
+static void render_text(SDL_Renderer *ren, TTF_Font *f, const char *txt, int x, int y)
+{
+    SDL_Color white = {255,255,255,255};
+    SDL_Surface *surf = TTF_RenderText_Solid(f, txt, white);
+    if (!surf) return;
+    SDL_Texture *tex = SDL_CreateTextureFromSurface(ren, surf);
+    SDL_Rect dst = {x, y, surf->w, surf->h};
+    SDL_RenderCopy(ren, tex, NULL, &dst);
+    SDL_DestroyTexture(tex); SDL_FreeSurface(surf);
+}
 
-    SDL_Rect bg1 = {game->backgroundX, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
-    SDL_Rect bg2 = {game->backgroundX + WINDOW_WIDTH, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
-    SDL_SetRenderDrawColor(game->renderer, 20, 20, 80, 255);
-    SDL_RenderFillRect(game->renderer, &bg1);
-    SDL_RenderFillRect(game->renderer, &bg2);
+static void render(Game *g)
+{
+    SDL_SetRenderDrawColor(g->ren, 0, 0, 50, 255);
+    SDL_RenderClear(g->ren);
 
-    if (game->state == MENU) {
-        render_text(game->renderer, game->font, "Mini Afterburner Neo Geo Style", 150, 100);
-        render_text(game->renderer, game->font, "Press Enter to Play", 280, 200);
-        render_text(game->renderer, game->font, "Press O for Options", 280, 250);
-        render_text(game->renderer, game->font, "Press Escape to Quit", 280, 300);
-        char hs[32]; sprintf(hs, "Highscore: %d", game->highscore);
-        render_text(game->renderer, game->font, hs, 300, 350);
-    } 
-    else if (game->state == OPTIONS) {
+    /* scrolling bg */
+    SDL_SetRenderDrawColor(g->ren, 20, 20, 80, 255);
+    SDL_Rect bg1 = {(int)g->backgroundX, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
+    SDL_Rect bg2 = {(int)(g->backgroundX + WINDOW_WIDTH), 0, WINDOW_WIDTH, WINDOW_HEIGHT};
+    SDL_RenderFillRect(g->ren, &bg1); SDL_RenderFillRect(g->ren, &bg2);
+
+    if (g->state == MENU) {
+        render_text(g->ren, g->font, "Mini Afterburner Neo Geo Style", 150, 100);
+        render_text(g->ren, g->font, "Enter = Play   O = Options   Esc = Quit", 200, 200);
+        char hs[32]; snprintf(hs, sizeof(hs), "Highscore %d", g->highscore);
+        render_text(g->ren, g->font, hs, 300, 300);
+    } else if (g->state == OPTIONS) {
         char buf[64];
-        sprintf(buf, "Music Volume: %d (Up/Down)", game->musicVolume);
-        render_text(game->renderer, game->font, buf, 250, 150);
-        sprintf(buf, "Effects Volume: %d (Left/Right)", game->effectsVolume);
-        render_text(game->renderer, game->font, buf, 250, 200);
-        render_text(game->renderer, game->font, "Press Escape to Return", 250, 300);
-    }
-    else if (game->state == PLAYING) {
-        SDL_Rect srcPlayer = {((SDL_GetTicks() / 100) % NUM_FRAMES) * SPRITE_WIDTH, 
-                             0, SPRITE_WIDTH, SPRITE_HEIGHT};
-        SDL_RenderCopy(game->renderer, game->playerTexture, &srcPlayer, &game->player);
-
-        SDL_SetRenderDrawColor(game->renderer, 255, 255, 0, 255);
-        for (int i = 0; i < MAX_BULLETS; i++)
-            if (game->bullets[i].active) {
-                SDL_Rect b = {game->bullets[i].x, game->bullets[i].y, 10, 4};
-                SDL_RenderFillRect(game->renderer, &b);
-            }
-
-        for (int i = 0; i < MAX_ENEMIES; i++)
-            if (game->enemies[i].active) {
-                SDL_Rect src = {game->enemies[i].currentFrame * SPRITE_WIDTH, 0, 
-                              SPRITE_WIDTH, SPRITE_HEIGHT};
-                SDL_RenderCopy(game->renderer, game->enemyTexture, &src, &game->enemies[i].rect);
-            }
-
-        SDL_SetRenderDrawColor(game->renderer, 255, 140, 0, 255);
-        for (int p = 0; p < MAX_PARTICLES; p++) {
-            if (game->particles[p].life > 0) {
-                SDL_Rect pr = {game->particles[p].x, game->particles[p].y, 4, 4};
-                SDL_RenderFillRect(game->renderer, &pr);
+        snprintf(buf, sizeof(buf), "Music  : %d  (Up/Down)", g->volMusic);
+        render_text(g->ren, g->font, buf, 250, 150);
+        snprintf(buf, sizeof(buf), "Effects: %d  (Left/Right)", g->volFX);
+        render_text(g->ren, g->font, buf, 250, 200);
+        render_text(g->ren, g->font, "Esc = Back", 250, 300);
+    } else if (g->state == PLAYING) {
+        /* player */
+        SDL_Rect src = {(SDL_GetTicks()/100 % NUM_FRAMES)*SPRITE_WIDTH, 0, SPRITE_WIDTH, SPRITE_HEIGHT};
+        SDL_RenderCopy(g->ren, g->texPlayer, &src, &g->player);
+        /* bullets */
+        SDL_SetRenderDrawColor(g->ren, 255, 255, 0, 255);
+        for (int i = 0; i < MAX_BULLETS; ++i) {
+            if (g->bullets[i].active) {
+                SDL_Rect b = {(int)g->bullets[i].x, (int)g->bullets[i].y, 10, 4};
+                SDL_RenderFillRect(g->ren, &b);
             }
         }
-
-        char scoreText[32]; sprintf(scoreText, "Score: %d", game->score);
-        render_text(game->renderer, game->font, scoreText, 10, 10);
+        /* enemies */
+        for (int i = 0; i < MAX_ENEMIES; ++i) {
+            Enemy *e = &g->enemies[i];
+            if (e->active) {
+                SDL_Rect srcE = {e->frame*SPRITE_WIDTH, 0, SPRITE_WIDTH, SPRITE_HEIGHT};
+                SDL_RenderCopy(g->ren, g->texEnemy, &srcE, &e->rect);
+            }
+        }
+        /* particles */
+        SDL_SetRenderDrawColor(g->ren, 255, 140, 0, 255);
+        for (int i = 0; i < MAX_PARTICLES; ++i) {
+            Particle *p = &g->particles[i];
+            if (p->life) { SDL_Rect pr = {(int)p->x, (int)p->y, 4, 4}; SDL_RenderFillRect(g->ren, &pr); }
+        }
+        /* score */
+        char tmp[32]; snprintf(tmp, sizeof(tmp), "Score %d", g->score);
+        render_text(g->ren, g->font, tmp, 10, 10);
     }
-
-    SDL_RenderPresent(game->renderer);
+    SDL_RenderPresent(g->ren);
 }
 
-void game_cleanup(Game* game) {
+/* ---------- main ---------- */
+int main(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    Game g = {0};
+    if (!game_init(&g)) return 1;
+
+    bool running = true;
+    SDL_Event ev;
+    while (running && g.state != QUIT) {
+        uint32_t now = SDL_GetTicks();
+        float dt = (now - g.lastTicks) / 1000.0f;
+        g.lastTicks = now;
+
+        while (SDL_PollEvent(&ev)) {
+            if (ev.type == SDL_QUIT) running = false;
+            else handle_event(&g, &ev);
+        }
+        update(&g, dt);
+        render(&g);
+        SDL_Delay(1);               /* laisse respirer le CPU */
+    }
+
+    /* ---------- cleanup ---------- */
     Mix_HaltMusic();
-    Mix_FreeChunk(game->shotSound);
-    Mix_FreeChunk(game->explosionSound);
-    Mix_FreeMusic(game->music);
-    TTF_CloseFont(game->font);
-    SDL_DestroyTexture(game->enemyTexture);
-    SDL_DestroyTexture(game->playerTexture);
-    SDL_DestroyRenderer(game->renderer);
-    SDL_DestroyWindow(game->window);
+    Mix_FreeChunk(g.sndExplode);
+    Mix_FreeChunk(g.sndShot);
+    Mix_FreeMusic(g.music);
+    TTF_CloseFont(g.font);
+    SDL_DestroyTexture(g.texEnemy);
+    SDL_DestroyTexture(g.texPlayer);
+    SDL_DestroyRenderer(g.ren);
+    SDL_DestroyWindow(g.win);
     Mix_CloseAudio();
     TTF_Quit();
     SDL_Quit();
-}
-
-int main(int argc, char *argv[]) {
-    (void)argc; (void)argv;
-
-    Game game = {0};
-    if (!game_init(&game)) {
-        SDL_Log("Game initialization failed");
-        return 1;
-    }
-
-    bool running = true;
-    SDL_Event event;
-
-    while (running && game.state != QUIT) {
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) running = false;
-            else game_handle_event(&game, &event);
-        }
-
-        game_update(&game);
-        game_render(&game);
-        SDL_Delay(16);
-    }
-
-    game_cleanup(&game);
     return 0;
 }
 
